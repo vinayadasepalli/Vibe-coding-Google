@@ -159,6 +159,71 @@ export const getAvatarForScore = (currentScore: number): AvatarStage => {
   return AVATAR_STAGES[0];
 };
 
+// LOCAL TOP 5 LEADERBOARD DEFINITIONS
+export interface LeaderboardEntry {
+  id: string;
+  name: string;
+  score: number;
+  date: string;
+  stageBadge: string;
+  stageTitle: string;
+  cupsServed: number;
+  biscuitsCaught: number;
+}
+
+export const DEFAULT_LEADERBOARD: LeaderboardEntry[] = [
+  {
+    id: 'seed-1',
+    name: 'Sultan Farooq',
+    score: 1350,
+    date: 'Oct 12',
+    stageBadge: '🌟',
+    stageTitle: 'Sultan of Samovars',
+    cupsServed: 18,
+    biscuitsCaught: 42,
+  },
+  {
+    id: 'seed-2',
+    name: 'Ustaad Niloufer',
+    score: 980,
+    date: 'Oct 11',
+    stageBadge: '👑',
+    stageTitle: 'Café Baadshah',
+    cupsServed: 14,
+    biscuitsCaught: 35,
+  },
+  {
+    id: 'seed-3',
+    name: 'Nimrah Chaiwala',
+    score: 720,
+    date: 'Oct 10',
+    stageBadge: '🎖️',
+    stageTitle: 'Table Ustaad',
+    cupsServed: 11,
+    biscuitsCaught: 28,
+  },
+  {
+    id: 'seed-4',
+    name: 'Secunderabad Express',
+    score: 510,
+    date: 'Oct 09',
+    stageBadge: '🎖️',
+    stageTitle: 'Table Ustaad',
+    cupsServed: 8,
+    biscuitsCaught: 22,
+  },
+  {
+    id: 'seed-5',
+    name: 'Chotu Mirza',
+    score: 340,
+    date: 'Oct 08',
+    stageBadge: '⚡',
+    stageTitle: 'Cutting Pro',
+    cupsServed: 6,
+    biscuitsCaught: 18,
+  },
+];
+
 export default function App() {
   // Game Flow State
   const [gameState, setGameState] = useState<GameState>('TITLE');
@@ -177,6 +242,7 @@ export default function App() {
   const [showRulesModal, setShowRulesModal] = useState<boolean>(false);
   const [showLoreModal, setShowLoreModal] = useState<boolean>(false);
   const [showReadmeModal, setShowReadmeModal] = useState<boolean>(false);
+  const [showLeaderboardModal, setShowLeaderboardModal] = useState<boolean>(false);
 
   // Avatar Evolution Notification
   const [avatarLevelBanner, setAvatarLevelBanner] = useState<string | null>(null);
@@ -189,6 +255,33 @@ export default function App() {
       return 0;
     }
   });
+
+  // Local Leaderboard State (Top 5 stored in localStorage)
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(() => {
+    try {
+      const stored = localStorage.getItem('irani_rush_leaderboard');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.slice(0, 5);
+        }
+      }
+    } catch {
+      // Fallback
+    }
+    return DEFAULT_LEADERBOARD;
+  });
+
+  const [playerNameInput, setPlayerNameInput] = useState<string>(() => {
+    try {
+      return localStorage.getItem('irani_rush_player_name') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [hasSavedToLeaderboard, setHasSavedToLeaderboard] = useState<boolean>(false);
+  const [lastSavedEntryId, setLastSavedEntryId] = useState<string | null>(null);
 
   // Catching Plate State (Percentage 12% to 88%)
   const [plateX, setPlateX] = useState<number>(50);
@@ -445,6 +538,8 @@ export default function App() {
     setUpgrades({ spigotLevel: 1, cardamomLvl: 0, chotuLvl: 0 });
     updatePlatePosition(50);
     prevStageRef.current = 1;
+    setHasSavedToLeaderboard(false);
+    setLastSavedEntryId(null);
     setGameState('PLAYING');
     if (musicEnabled) {
       sounds.startBgm();
@@ -492,11 +587,81 @@ export default function App() {
     });
   }, []);
 
+  // Save entry to local leaderboard (Top 5)
+  const handleSaveLeaderboardEntry = useCallback((nameToSave: string) => {
+    const trimmed = nameToSave.trim() || 'Ustaad Guest';
+    try {
+      localStorage.setItem('irani_rush_player_name', trimmed);
+    } catch {
+      // Ignore
+    }
+
+    const currentAvatar = getAvatarForScore(score);
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const newEntry: LeaderboardEntry = {
+      id: `entry-${Date.now()}`,
+      name: trimmed,
+      score,
+      date: dateStr,
+      stageBadge: currentAvatar.badge,
+      stageTitle: currentAvatar.title,
+      cupsServed,
+      biscuitsCaught,
+    };
+
+    const updated = [...leaderboard, newEntry]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+
+    setLeaderboard(updated);
+    setLastSavedEntryId(newEntry.id);
+    setHasSavedToLeaderboard(true);
+
+    try {
+      localStorage.setItem('irani_rush_leaderboard', JSON.stringify(updated));
+    } catch (e) {
+      console.error('Failed to save leaderboard', e);
+    }
+
+    sounds.playGoldenBiscuit();
+    confetti({
+      particleCount: 80,
+      spread: 60,
+      origin: { y: 0.5 },
+      colors: ['#F59E0B', '#FBBF24', '#10B981', '#FDE68A']
+    });
+  }, [score, cupsServed, biscuitsCaught, leaderboard]);
+
+  // Reset leaderboard to defaults
+  const handleResetLeaderboard = useCallback(() => {
+    setLeaderboard(DEFAULT_LEADERBOARD);
+    setHasSavedToLeaderboard(false);
+    setLastSavedEntryId(null);
+    try {
+      localStorage.setItem('irani_rush_leaderboard', JSON.stringify(DEFAULT_LEADERBOARD));
+    } catch (e) {
+      console.error('Failed to reset leaderboard', e);
+    }
+  }, []);
+
   // Keyboard navigation & controls listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept shortcuts when typing in an input
+      if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') {
+        return;
+      }
+
       if (gameState !== 'PLAYING') {
-        if (e.key === ' ' && gameState === 'TITLE') {
+        // Prevent auto-starting if any information modal is active
+        if (
+          e.key === ' ' &&
+          gameState === 'TITLE' &&
+          !showRulesModal &&
+          !showLoreModal &&
+          !showReadmeModal &&
+          !showLeaderboardModal
+        ) {
           startGame('RUSH_45');
         }
         return;
@@ -526,7 +691,17 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [gameState, handleSamovarClick, togglePause, startGame, updatePlatePosition]);
+  }, [
+    gameState,
+    showRulesModal,
+    showLoreModal,
+    showReadmeModal,
+    showLeaderboardModal,
+    handleSamovarClick,
+    togglePause,
+    startGame,
+    updatePlatePosition
+  ]);
 
   // Mouse & Touch pointer tracker for the plate
   const handleArenaPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -745,6 +920,13 @@ export default function App() {
             className="hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 text-left cursor-pointer"
           >
             How to Play
+          </button>
+          <button 
+            onClick={() => setShowLeaderboardModal(true)} 
+            className="hover:text-amber-300 transition-colors whitespace-nowrap shrink-0 text-left cursor-pointer flex items-center gap-1.5"
+          >
+            <Trophy className="w-3.5 h-3.5 text-amber-400" />
+            Leaderboard
           </button>
           <button 
             onClick={() => setShowLoreModal(true)} 
@@ -1396,103 +1578,214 @@ export default function App() {
       </main>
 
       {/* GAME OVER MODAL WITH HOME BUTTON & 5-STAGE AVATAR SUMMARY */}
-      {gameState === 'GAME_OVER' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/85 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-stone-900 border border-stone-800 rounded-2xl p-6 sm:p-7 text-center shadow-2xl relative">
-            
-            <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/30 mx-auto flex items-center justify-center mb-3">
-              <Trophy className="w-8 h-8 text-amber-400" />
-            </div>
+      {/* GAME OVER MODAL WITH TOP 5 LEADERBOARD & HOME BUTTON */}
+      {gameState === 'GAME_OVER' && (() => {
+        const qualifiesForTop5 = score > 0 && (leaderboard.length < 5 || score > leaderboard[leaderboard.length - 1].score);
 
-            <h2 className="font-serif-display text-2xl sm:text-3xl font-bold text-amber-200 mb-1">
-              Rush Hour Finished!
-            </h2>
-            <p className="text-xs text-stone-400 mb-4">
-              Here is your final café service performance report:
-            </p>
-
-            {/* Score & Avatar Stage Highlight */}
-            <div className="bg-stone-950/90 rounded-xl p-4 border border-stone-800 mb-4 text-center">
-              <div className="text-[11px] uppercase tracking-widest text-stone-400 mb-0.5">
-                Final Score
-              </div>
-              <div className="text-4xl font-mono-numbers font-black text-amber-300 mb-2">
-                {score}
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/85 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="w-full max-w-lg bg-stone-900 border border-stone-800 rounded-2xl p-5 sm:p-6 text-center shadow-2xl relative max-h-[92vh] overflow-y-auto">
+              
+              <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/30 mx-auto flex items-center justify-center mb-2.5">
+                <Trophy className="w-7 h-7 text-amber-400" />
               </div>
 
-              {/* Achieved Avatar Stage */}
-              <div className="pt-2 border-t border-stone-800/80 flex items-center justify-center gap-2">
-                <span className="text-2xl">{currentAvatar.badge}</span>
-                <div className="text-left">
-                  <div className="text-xs font-bold text-amber-300">
-                    Stage {currentAvatar.stage}: {currentAvatar.title}
-                  </div>
-                  <div className="text-[11px] text-stone-400">
-                    {currentAvatar.subtitle}
+              <h2 className="font-serif-display text-2xl sm:text-3xl font-bold text-amber-200 mb-0.5">
+                Rush Hour Finished!
+              </h2>
+              <p className="text-xs text-stone-400 mb-3">
+                Here is your final café service performance report:
+              </p>
+
+              {/* Score & Avatar Stage Highlight */}
+              <div className="bg-stone-950/90 rounded-xl p-3 sm:p-4 border border-stone-800 mb-3 text-center">
+                <div className="text-[10px] uppercase tracking-widest text-stone-400 mb-0.5">
+                  Final Score
+                </div>
+                <div className="text-3xl sm:text-4xl font-mono-numbers font-black text-amber-300 mb-1.5">
+                  {score}
+                </div>
+
+                {/* Achieved Avatar Stage */}
+                <div className="pt-2 border-t border-stone-800/80 flex items-center justify-center gap-2">
+                  <span className="text-2xl" role="img" aria-label={currentAvatar.title}>
+                    {currentAvatar.badge}
+                  </span>
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-amber-300">
+                      Stage {currentAvatar.stage}: {currentAvatar.title}
+                    </div>
+                    <div className="text-[11px] text-stone-400">
+                      {currentAvatar.subtitle}
+                    </div>
                   </div>
                 </div>
               </div>
+
+              {/* Stats Breakdown */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-left text-xs mb-3.5 bg-stone-950/50 p-2.5 rounded-lg border border-stone-800/60 font-mono-numbers">
+                <div>
+                  <span className="text-stone-400 text-[11px]">Biscuits:</span>
+                  <strong className="block text-stone-200 text-xs sm:text-sm">{biscuitsCaught}</strong>
+                </div>
+                <div>
+                  <span className="text-stone-400 text-[11px]">Chai Served:</span>
+                  <strong className="block text-amber-400 text-xs sm:text-sm">{cupsServed} cups</strong>
+                </div>
+                <div>
+                  <span className="text-stone-400 text-[11px]">Golden:</span>
+                  <strong className="block text-yellow-300 text-xs sm:text-sm">{goldenCaught}</strong>
+                </div>
+                <div>
+                  <span className="text-stone-400 text-[11px]">Max Combo:</span>
+                  <strong className="block text-amber-300 text-xs sm:text-sm">{maxCombo}x</strong>
+                </div>
+                <div>
+                  <span className="text-stone-400 text-[11px]">Dunk Dips:</span>
+                  <strong className="block text-emerald-400 text-xs sm:text-sm">{dunkCount}</strong>
+                </div>
+                <div>
+                  <span className="text-stone-400 text-[11px]">Personal Best:</span>
+                  <strong className="block text-stone-300 text-xs sm:text-sm">{highScore}</strong>
+                </div>
+              </div>
+
+              {/* LOCAL LEADERBOARD SUBMISSION PROMPT (IF QUALIFIED FOR TOP 5) */}
+              {qualifiesForTop5 && !hasSavedToLeaderboard && (
+                <div className="mb-3.5 p-3 bg-gradient-to-r from-amber-950/70 via-stone-900 to-amber-950/70 rounded-xl border border-amber-500/50 text-left">
+                  <div className="flex items-center gap-1.5 mb-1.5 text-amber-300 font-bold text-xs">
+                    <Sparkles className="w-3.5 h-3.5 text-yellow-400 animate-spin" />
+                    <span>NEW TOP 5 RECORD! Enter your name:</span>
+                  </div>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleSaveLeaderboardEntry(playerNameInput);
+                    }}
+                    className="flex gap-2"
+                  >
+                    <input
+                      type="text"
+                      maxLength={18}
+                      value={playerNameInput}
+                      onChange={(e) => setPlayerNameInput(e.target.value)}
+                      placeholder="Your Barista Name (e.g. Ustaad Nizam)"
+                      className="flex-1 bg-stone-950 border border-stone-700 focus:border-amber-400 rounded-lg px-2.5 py-1.5 text-xs text-stone-100 placeholder:text-stone-500 outline-none"
+                    />
+                    <button
+                      type="submit"
+                      className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-stone-950 bg-amber-400 hover:bg-amber-300 transition-all cursor-pointer whitespace-nowrap shadow flex items-center gap-1"
+                    >
+                      <Trophy className="w-3.5 h-3.5 text-stone-950" />
+                      Save
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {hasSavedToLeaderboard && (
+                <div className="mb-3 p-2 bg-emerald-950/50 rounded-xl border border-emerald-600/40 text-xs text-emerald-300 flex items-center justify-center gap-2">
+                  <Award className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Your score is saved to the Top 5 Local Leaderboard!</span>
+                </div>
+              )}
+
+              {/* TOP 5 LOCAL LEADERBOARD TABLE */}
+              <div className="mb-4 bg-stone-950/80 rounded-xl p-3 border border-stone-800 text-left">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                    Top 5 Hyderabadi Masters (Leaderboard)
+                  </span>
+                  <span className="text-[10px] text-stone-400 font-mono-numbers">
+                    Local Storage
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {leaderboard.map((entry, idx) => {
+                    const isCurrentPlayerEntry = entry.id === lastSavedEntryId;
+                    const rankMedal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+
+                    return (
+                      <div
+                        key={entry.id}
+                        className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-all ${
+                          isCurrentPlayerEntry
+                            ? 'bg-amber-950/70 border border-amber-500/70 shadow-[0_0_10px_rgba(245,158,11,0.25)]'
+                            : 'bg-stone-900/70 border border-stone-800/80'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-mono-numbers font-bold text-stone-400 w-5 text-center shrink-0 text-xs">
+                            {rankMedal}
+                          </span>
+                          <span className="text-sm shrink-0" role="img" aria-label={entry.stageTitle}>
+                            {entry.stageBadge}
+                          </span>
+                          <div className="truncate">
+                            <span className={`font-semibold truncate flex items-center gap-1.5 ${
+                              isCurrentPlayerEntry ? 'text-amber-200' : 'text-stone-200'
+                            }`}>
+                              <span className="truncate">{entry.name}</span>
+                              {isCurrentPlayerEntry && (
+                                <span className="text-[9px] bg-amber-400 text-stone-950 px-1 py-0.2 rounded font-black uppercase shrink-0">
+                                  YOU
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[10px] text-stone-400 block truncate">
+                              {entry.stageTitle} · {entry.cupsServed} cups · {entry.biscuitsCaught} biscuits
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0 ml-2">
+                          <span className="font-mono-numbers font-bold text-amber-300 text-xs sm:text-sm block">
+                            {entry.score}
+                          </span>
+                          <span className="text-[9px] text-stone-400 block font-mono-numbers">
+                            {entry.date}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ACTION BUTTONS: PLAY AGAIN + HOME BUTTON */}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={() => startGame('RUSH_45')}
+                  className="flex-1 py-2.5 px-3.5 rounded-xl font-bold text-xs text-stone-950 bg-amber-400 hover:bg-amber-300 active:scale-95 transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Play 45s Rush
+                </button>
+                
+                <button
+                  onClick={() => startGame('RELAXED_90')}
+                  className="py-2.5 px-3.5 rounded-xl font-semibold text-xs text-stone-300 border border-stone-700 hover:border-amber-400 hover:text-amber-200 transition-all cursor-pointer"
+                >
+                  90s Mode
+                </button>
+
+                {/* HOME ICON BUTTON AT END OF GAME */}
+                <button
+                  onClick={goHome}
+                  className="py-2.5 px-3.5 rounded-xl font-semibold text-xs text-amber-300 border border-amber-600/50 bg-amber-950/30 hover:bg-amber-900/40 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  title="Return to Main Menu"
+                >
+                  <Home className="w-4 h-4 text-amber-400" />
+                  <span>Home</span>
+                </button>
+              </div>
+
             </div>
-
-            {/* Stats Breakdown */}
-            <div className="grid grid-cols-2 gap-2.5 text-left text-xs mb-5 bg-stone-950/50 p-3 rounded-lg border border-stone-800/60 font-mono-numbers">
-              <div>
-                <span className="text-stone-400">Biscuits Caught:</span>
-                <strong className="block text-stone-200 text-sm">{biscuitsCaught}</strong>
-              </div>
-              <div>
-                <span className="text-stone-400">Chai Served:</span>
-                <strong className="block text-amber-400 text-sm">{cupsServed} cups</strong>
-              </div>
-              <div>
-                <span className="text-stone-400">Golden Biscuits:</span>
-                <strong className="block text-yellow-300 text-sm">{goldenCaught}</strong>
-              </div>
-              <div>
-                <span className="text-stone-400">Max Combo:</span>
-                <strong className="block text-amber-300 text-sm">{maxCombo}x</strong>
-              </div>
-              <div>
-                <span className="text-stone-400">Dunk Bonanzas:</span>
-                <strong className="block text-emerald-400 text-sm">{dunkCount} dips</strong>
-              </div>
-              <div>
-                <span className="text-stone-400">Personal Best:</span>
-                <strong className="block text-stone-300 text-sm">{highScore}</strong>
-              </div>
-            </div>
-
-            {/* ACTION BUTTONS: PLAY AGAIN + HOME BUTTON */}
-            <div className="flex flex-col sm:flex-row gap-2.5">
-              <button
-                onClick={() => startGame('RUSH_45')}
-                className="flex-1 py-3 px-4 rounded-xl font-bold text-xs text-stone-950 bg-amber-400 hover:bg-amber-300 active:scale-95 transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Play 45s Rush
-              </button>
-              
-              <button
-                onClick={() => startGame('RELAXED_90')}
-                className="py-3 px-3.5 rounded-xl font-semibold text-xs text-stone-300 border border-stone-700 hover:border-amber-400 hover:text-amber-200 transition-all cursor-pointer"
-              >
-                90s Mode
-              </button>
-
-              {/* HOME ICON BUTTON AT END OF GAME */}
-              <button
-                onClick={goHome}
-                className="py-3 px-3.5 rounded-xl font-semibold text-xs text-amber-300 border border-amber-600/50 bg-amber-950/30 hover:bg-amber-900/40 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                title="Return to Main Menu"
-              >
-                <Home className="w-4 h-4 text-amber-400" />
-                <span>Home</span>
-              </button>
-            </div>
-
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* TITLE / WELCOME MODAL OVERLAY (KEEPS DUAL STATIONS VISIBLE IN BACKGROUND) */}
       {gameState === 'TITLE' && (
@@ -1578,6 +1871,14 @@ export default function App() {
                 className="px-5 py-2.5 rounded-xl text-xs font-semibold text-stone-200 border border-stone-700 hover:border-amber-400 hover:text-amber-200 transition-all cursor-pointer"
               >
                 Relaxed 90s Mode
+              </button>
+
+              <button
+                onClick={() => setShowLeaderboardModal(true)}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-amber-300 border border-amber-600/50 bg-stone-950/60 hover:bg-amber-950/40 hover:border-amber-400 transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                Top 5 Leaderboard
               </button>
 
               <button
@@ -1851,6 +2152,99 @@ export default function App() {
                 className="px-5 py-2 rounded-lg text-xs font-bold text-stone-950 bg-amber-400 hover:bg-amber-300 transition-all cursor-pointer"
               >
                 Close README
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* LOCAL TOP 5 LEADERBOARD MODAL */}
+      {showLeaderboardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-stone-900 border border-stone-800 rounded-2xl p-6 sm:p-7 shadow-2xl relative">
+            
+            <div className="flex items-center justify-between pb-3 border-b border-stone-800 mb-4">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-400" />
+                <h3 className="font-serif-display text-xl font-bold text-amber-200">
+                  Top 5 Local Leaderboard
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowLeaderboardModal(false)}
+                className="text-stone-400 hover:text-stone-200 text-xs px-2.5 py-1 rounded bg-stone-800 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+            <p className="text-xs text-stone-300 mb-4 leading-relaxed">
+              Highest scoring Barista legends of the Irani Café Rush saved in this browser&apos;s localStorage:
+            </p>
+
+            <div className="space-y-2 mb-5">
+              {leaderboard.map((entry, idx) => {
+                const isCurrentPlayerEntry = entry.id === lastSavedEntryId;
+                const rankMedal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+
+                return (
+                  <div
+                    key={entry.id}
+                    className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all ${
+                      isCurrentPlayerEntry
+                        ? 'bg-amber-950/70 border border-amber-500/70 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                        : 'bg-stone-950/80 border border-stone-800/90'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="font-mono-numbers font-bold text-stone-400 w-5 text-center shrink-0">
+                        {rankMedal}
+                      </span>
+                      <span className="text-base shrink-0" role="img" aria-label={entry.stageTitle}>
+                        {entry.stageBadge}
+                      </span>
+                      <div className="truncate">
+                        <span className={`font-semibold truncate block ${isCurrentPlayerEntry ? 'text-amber-200' : 'text-stone-200'}`}>
+                          {entry.name}
+                          {isCurrentPlayerEntry && (
+                            <span className="ml-1.5 text-[9px] bg-amber-400 text-stone-950 px-1 py-0.2 rounded font-black uppercase">
+                              YOU
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-[10px] text-stone-400 block truncate">
+                          {entry.stageTitle} · {entry.cupsServed} cups · {entry.biscuitsCaught} biscuits
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0 ml-2">
+                      <span className="font-mono-numbers font-bold text-amber-300 text-sm block">
+                        {entry.score}
+                      </span>
+                      <span className="text-[9px] text-stone-500 block font-mono-numbers">
+                        {entry.date}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-3 border-t border-stone-800 flex items-center justify-between text-xs">
+              <button
+                onClick={handleResetLeaderboard}
+                className="text-[11px] text-stone-500 hover:text-rose-400 transition-colors cursor-pointer"
+                title="Reset to default authentic leaderboard records"
+              >
+                Reset to Default Ranks
+              </button>
+              <button
+                onClick={() => setShowLeaderboardModal(false)}
+                className="px-5 py-2 rounded-lg text-xs font-bold text-stone-950 bg-amber-400 hover:bg-amber-300 transition-all cursor-pointer"
+              >
+                Done
               </button>
             </div>
 
