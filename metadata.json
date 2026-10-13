@@ -1,0 +1,6 @@
+{
+  "name": "Irani Chai & Osmania Biscuit Rush",
+  "description": "Fast-paced Hyderabadi Irani café-themed time-attack clicker: catch falling Osmania biscuits and brew scalding cups of Irani chai from the vintage samovar before time runs out.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
